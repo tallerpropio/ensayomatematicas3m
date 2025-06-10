@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ensayo Interactivo de Matemáticas con Retroalimentación</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals -->
+    <!-- Application Structure Plan: Se ha diseñado una aplicación de cuestionario interactivo de una sola página. La estructura consiste en una pantalla de bienvenida, una vista de pregunta por vez, y una pantalla final de resultados. El flujo es lineal: el usuario avanza pregunta por pregunta, recibe feedback inmediato y al final ve un resumen de su desempeño con un gráfico. Esta estructura fue elegida porque transforma un ensayo estático en una herramienta de aprendizaje activa, permitiendo al usuario enfocarse en un problema a la vez, obtener corrección instantánea para reforzar el aprendizaje y analizar sus resultados por área para identificar puntos débiles, lo que es mucho más efectivo para el estudio. Se añade un modal de feedback para explicaciones detalladas. -->
+    <!-- Visualization & Content Choices: Cada pregunta se presenta como un bloque de texto con opciones clickeables (HTML/JS) para una interacción directa. El feedback es visual (colores verde/rojo) y textual a través de un modal que explica el porqué del error o el proceso de la respuesta correcta. El progreso se muestra en una barra de puntos navegables (HTML/JS). El resultado final se visualiza con un gráfico de dona (Chart.js en un Canvas) para comparar el rendimiento en las distintas áreas temáticas. Este gráfico ofrece una síntesis visual rápida de las fortalezas y debilidades. Goal: Evaluar, explicar y resumir. Method: Quiz interactivo + Modal de feedback + Gráfico de resultados. Library: Chart.js. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)']],
+        displayMath: [['\\[', '\\]']]
+      },
+      svg: {
+        fontCache: 'global'
+      }
+    };
+    </script>
+    <script type="text/javascript" id="MathJax-script" async
+      src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f1eb; 
+            color: #4a4a4a;
+        }
+        .quiz-option {
+            transition: all 0.2s ease-in-out;
+        }
+        .quiz-option:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+        }
+        .quiz-option:disabled {
+            cursor: not-allowed;
+        }
+        .correct-answer {
+            background-color: #d1fae5 !important;
+            border-color: #10b981 !important;
+            color: #065f46;
+        }
+        .incorrect-answer {
+            background-color: #fee2e2 !important;
+            border-color: #ef4444 !important;
+            color: #991b1b;
+        }
+        .chart-container {
+            position: relative;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+            width: 100%;
+            max-width: 400px;
+        }
+         @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .feedback-modal-content > p, .feedback-modal-content > div {
+            margin-bottom: 0.75rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <main id="app-container" class="w-full max-w-4xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-10 transition-all duration-500">
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">Ensayo de Práctica: Matemáticas</h1>
+            <p class="text-gray-600 mb-2">Nivel: Tercero Medio</p>
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 my-6 text-left text-amber-800">
+                <h2 class="font-semibold mb-2 text-lg">Instrucciones</h2>
+                <p class="mb-4">Este ensayo interactivo está diseñado para ayudarte a prepararte. Evalúa tus conocimientos en tres áreas clave:</p>
+                <ul class="list-disc list-inside space-y-1">
+                    <li>Operatoria con Números Reales</li>
+                    <li>Operatoria con Números Complejos</li>
+                    <li>Medidas de Dispersión de Muestras</li>
+                </ul>
+                <p class="mt-4">Recibirás retroalimentación detallada e instantánea por cada pregunta. ¡Mucho éxito!</p>
+            </div>
+            <button id="start-btn" class="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                Comenzar Ensayo
+            </button>
+        </div>
+
+        <!-- Quiz Screen -->
+        <div id="quiz-screen" class="hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-indigo-700" id="topic-title"></h2>
+                <p class="text-sm font-semibold text-gray-600" id="question-counter"></p>
+            </div>
+            
+            <div id="progress-bar" class="flex justify-center flex-wrap gap-2 mb-6"></div>
+
+            <div class="bg-gray-50 rounded-lg p-6 mb-6 min-h-[100px] flex items-center justify-center">
+                <p class="text-lg text-center" id="question-text"></p>
+            </div>
+            
+            <div id="options-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+
+            <div class="flex justify-end mt-8">
+                <button id="next-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg transition" disabled>Siguiente</button>
+                <button id="finish-btn" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-6 rounded-lg transition">Finalizar Ensayo</button>
+            </div>
+        </div>
+
+        <!-- Results Screen -->
+        <div id="results-screen" class="hidden text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">Resultados del Ensayo</h1>
+            <p class="text-gray-600 mb-6">Aquí tienes un resumen de tu rendimiento.</p>
+
+            <div class="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-6 mb-6">
+                <p class="text-2xl text-indigo-800">Puntaje Total</p>
+                <p class="text-5xl font-bold text-indigo-600 mt-2" id="total-score"></p>
+            </div>
+
+            <div class="mb-8">
+                <h3 class="text-2xl font-bold text-gray-700 mb-4">Desglose por Área</h3>
+                <p class="text-gray-600 max-w-2xl mx-auto mb-6">El siguiente gráfico muestra tu porcentaje de respuestas correctas en cada una de las tres áreas evaluadas. Úsalo para identificar dónde necesitas enfocar más tu estudio.</p>
+                <div class="chart-container">
+                    <canvas id="results-chart"></canvas>
+                </div>
+            </div>
+
+            <button id="restart-btn" class="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                Intentar de Nuevo
+            </button>
+        </div>
+    </main>
+    
+    <!-- Feedback Modal -->
+    <div id="feedback-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 animate-fade-in-up">
+            <h2 id="feedback-title" class="text-2xl font-bold mb-4"></h2>
+            <div id="feedback-content" class="text-gray-700 mb-6 feedback-modal-content"></div>
+            <div class="flex justify-end">
+                <button id="feedback-btn" class="text-white font-bold py-2 px-6 rounded-lg"></button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        const questions = [
+            // Operatoria con Números Reales
+            { topic: "Números Reales", question: "Al simplificar la expresión \\(\\sqrt{48}-\\sqrt{75}+\\sqrt{12}\\), se obtiene:", options: ["\\(6\\sqrt{3}\\)", "\\(\\sqrt{3}\\)", "\\(2\\sqrt{3}\\)", "\\(-\\sqrt{3}\\)", "\\(11\\sqrt{3}\\)"], answer: 1, explanation: "<div>Para simplificar, descomponemos cada raíz:</div><div>\\(\\sqrt{48} = \\sqrt{16 \\cdot 3} = 4\\sqrt{3}\\)</div><div>\\(\\sqrt{75} = \\sqrt{25 \\cdot 3} = 5\\sqrt{3}\\)</div><div>\\(\\sqrt{12} = \\sqrt{4 \\cdot 3} = 2\\sqrt{3}\\)</div><div>Luego, operamos: \\(4\\sqrt{3} - 5\\sqrt{3} + 2\\sqrt{3} = (4-5+2)\\sqrt{3} = \\sqrt{3}\\).</div>", hint: "Intenta descomponer cada número dentro de la raíz en un producto donde uno de los factores sea un cuadrado perfecto." },
+            { topic: "Números Reales", question: "¿Cuál es el resultado de la operación \\((\\frac{2}{3})^{-2} \\cdot (\\frac{4}{9})\\)?", options: ["\\(\\frac{16}{81}\\)", "1", "\\(\\frac{9}{4}\\)", "\\(\\frac{81}{16}\\)", "4"], answer: 1, explanation: "<div>Resolvemos la potencia con exponente negativo invirtiendo la fracción:</div><div>\\((\\frac{2}{3})^{-2} = (\\frac{3}{2})^2 = \\frac{9}{4}\\)</div><div>Luego, multiplicamos: \\(\\frac{9}{4} \\cdot \\frac{4}{9} = \\frac{36}{36} = 1\\).</div>", hint: "Recuerda que una fracción elevada a un exponente negativo es igual a la fracción invertida elevada al exponente positivo." },
+            { topic: "Números Reales", question: "Si \\(log_{2}x=5\\), ¿cuál es el valor de x?", options: ["10", "25", "3", "32", "\\(\\sqrt{5}\\)"], answer: 3, explanation: "<div>La definición de logaritmo \\(log_b(a) = c\\) es equivalente a \\(b^c = a\\).</div><div>Aplicando esto: \\(log_{2}(x) = 5\\) se convierte en \\(2^5 = x\\).</div><div>Calculamos la potencia: \\(2^5 = 32\\). Por lo tanto, \\(x = 32\\).</div>", hint: "Aplica la definición fundamental de logaritmo: la base elevada al resultado es igual al argumento." },
+            { topic: "Números Reales", question: "¿Cuál de los siguientes números es irracional?", options: ["\\(\\sqrt{16}\\)", "3.14", "\\(\\frac{22}{7}\\)", "0.333...", "\\(\\sqrt{5}\\)"], answer: 4, explanation: "Un número irracional tiene decimales infinitos no periódicos.<div><b>A)</b> \\(\\sqrt{16} = 4\\) (Entero).</div><div><b>B)</b> 3.14 (Decimal finito).</div><div><b>C)</b> \\(\\frac{22}{7}\\) (Racional).</div><div><b>D)</b> 0.333... (Decimal periódico).</div><div><b>E)</b> \\(\\sqrt{5}\\) no tiene raíz exacta, es irracional.</div>", hint: "Busca una raíz cuadrada que no sea un número entero." },
+            { topic: "Números Reales", question: "El resultado de \\((2\\sqrt{2}+3)(\\sqrt{2}-1)\\) es:", options: ["\\(1+\\sqrt{2}\\)", "\\(4-\\sqrt{2}\\)", "\\(1-\\sqrt{2}\\)", "\\(7+\\sqrt{2}\\)", "\\(4+\\sqrt{2}\\)"], answer: 0, explanation: "<div>Multiplicamos término a término (método FOIL):</div><div>\\((2\\sqrt{2})(\\sqrt{2}) + (2\\sqrt{2})(-1) + (3)(\\sqrt{2}) + (3)(-1)\\)</div><div>\\(= 2 \\cdot 2 - 2\\sqrt{2} + 3\\sqrt{2} - 3\\)</div><div>\\(= 4 + \\sqrt{2} - 3 = 1 + \\sqrt{2}\\).</div>", hint: "Usa la propiedad distributiva para multiplicar los binomios." },
+            { topic: "Números Reales", question: "¿Qué valor resulta de la operación \\(0,\\bar{5}+\\frac{1}{9}\\)?", options: ["\\(\\frac{5}{9}\\)", "\\(\\frac{6}{9}\\)", "0.6", "\\(\\frac{2}{3}\\)", "\\(\\frac{51}{90}\\)"], answer: 3, explanation: "<div>Primero, convertimos el decimal periódico a fracción: \\(0,\\bar{5} = \\frac{5}{9}\\).</div><div>Luego sumamos las fracciones: \\(\\frac{5}{9} + \\frac{1}{9} = \\frac{6}{9}\\).</div><div>Simplificamos la fracción resultante: \\(\\frac{6}{9} = \\frac{2}{3}\\).</div>", hint: "Recuerda que un decimal periódico simple como \\(0,\\bar{a}\\) es igual a la fracción \\(a/9\\)." },
+            { topic: "Números Reales", question: "Al ordenar de menor a mayor los números \\(a=\\sqrt{2}\\), \\(b=1.4\\), \\(c=\\frac{7}{5}\\), se obtiene:", options: ["a,b,c", "b,c,a", "c,b,a", "b,a,c", "c,a,b"], answer: 1, explanation: "<div>Convertimos todos los números a decimal para compararlos:</div><div>\\(a = \\sqrt{2} \\approx 1.414...\\)</div><div>\\(b = 1.4\\)</div><div>\\(c = \\frac{7}{5} = 1.4\\)</div><div>Entonces, \\(b=c\\) y ambos son menores que \\(a\\). El orden de menor a mayor es b, c, a (o c, b, a).</div>", hint: "Convierte todos los valores a su forma decimal para poder compararlos fácilmente." },
+            { topic: "Números Reales", question: "El intervalo solución de la inecuación \\(2x-5 \\le 7\\) es:", options: ["\\((-\\infty,6]\\)", "[6,∞)", "\\((-\\infty,1]\\)", "[1,∞)", "\\((-\\infty,6)\\)"], answer: 0, explanation: "<div>Resolvemos la inecuación paso a paso:</div><div>\\(2x - 5 \\le 7\\)</div><div>Sumamos 5 a ambos lados: \\(2x \\le 12\\)</div><div>Dividimos por 2: \\(x \\le 6\\)</div><div>Esto corresponde al intervalo desde menos infinito hasta 6, incluyendo el 6: \\((-\\infty, 6]\\).</div>", hint: "Resuelve la inecuación como si fuera una ecuación, pero recuerda mantener el signo de desigualdad." },
+            
+            // Operatoria con Números Complejos
+            { topic: "Números Complejos", question: "Si \\(z_1=3+2i\\) y \\(z_2=1-4i\\), ¿cuál es el resultado de \\(z_1+z_2\\)?", options: ["4-2i", "2+6i", "4+6i", "2-2i", "5-2i"], answer: 0, explanation: "<div>Sumamos las partes reales con las reales y las imaginarias con las imaginarias:</div><div>\\(z_1 + z_2 = (3+1) + (2i-4i)\\)</div><div>\\(= 4 + (-2)i = 4 - 2i\\).</div>", hint: "Suma las partes reales entre sí y las partes imaginarias entre sí." },
+            { topic: "Números Complejos", question: "El resultado de \\((2-3i)(1+i)\\) es:", options: ["\\(2-3i^2\\)", "5-i", "-1-i", "2-i", "5+i"], answer: 1, explanation: "<div>Multiplicamos término a término:</div><div>\\((2)(1) + (2)(i) + (-3i)(1) + (-3i)(i)\\)</div><div>\\(= 2 + 2i - 3i - 3i^2\\)</div><div>Sabiendo que \\(i^2 = -1\\): \\(= 2 - i - 3(-1) = 2 - i + 3 = 5 - i\\).</div>", hint: "Usa la propiedad distributiva y recuerda que \\(i^2 = -1\\)." },
+            { topic: "Números Complejos", question: "El conjugado del número complejo \\(z=-5+8i\\) es:", options: ["5-8i", "5+8i", "-5-8i", "8-5i", "-8+5i"], answer: 2, explanation: "<div>Para encontrar el conjugado (\\(\\bar{z}\\)) de un número complejo, simplemente se cambia el signo de la parte imaginaria.</div><div>Si \\(z = -5 + 8i\\), entonces \\(\\bar{z} = -5 - 8i\\).</div>", hint: "El conjugado de \\(a+bi\\) es \\(a-bi\\). Solo cambia el signo de la parte con 'i'." },
+            { topic: "Números Complejos", question: "El módulo del número complejo \\(z=4-3i\\) es:", options: ["7", "1", "\\(\\sqrt{7}\\)", "25", "5"], answer: 4, explanation: "<div>El módulo de \\(z=a+bi\\) se calcula como \\(|z|=\\sqrt{a^2+b^2}\\).</div><div>Para \\(z=4-3i\\):</div><div>\\(|z| = \\sqrt{4^2 + (-3)^2} = \\sqrt{16+9} = \\sqrt{25} = 5\\).</div>", hint: "Aplica el Teorema de Pitágoras a las componentes del número complejo." },
+            { topic: "Números Complejos", question: "El valor de \\(i^{27}\\) es:", options: ["i", "-1", "1", "-i", "0"], answer: 3, explanation: "<div>Las potencias de 'i' se repiten en un ciclo de 4: \\(i^1=i, i^2=-1, i^3=-i, i^4=1\\).</div><div>Para encontrar \\(i^{27}\\), dividimos 27 por 4: \\(27 \\div 4 = 6\\) con un resto de 3.</div><div>Entonces, \\(i^{27} = i^3 = -i\\).</div>", hint: "Divide el exponente por 4 y el resto te dará la potencia equivalente en el ciclo (1, 2, 3, 0 ó 4)." },
+            { topic: "Números Complejos", question: "Al calcular \\(\\frac{3+i}{1-i}\\), se obtiene:", options: ["1+2i", "3-i", "\\(\\frac{4+4i}{2}\\)", "2+i", "1-2i"], answer: 0, explanation: "<div>Multiplicamos el numerador y denominador por el conjugado del denominador (1+i):</div><div>\\(\\frac{3+i}{1-i} \\cdot \\frac{1+i}{1+i} = \\frac{(3+i)(1+i)}{(1-i)(1+i)}\\)</div><div>\\(= \\frac{3+3i+i+i^2}{1^2-i^2} = \\frac{3+4i-1}{1-(-1)} = \\frac{2+4i}{2} = 1+2i\\).</div>", hint: "Para dividir números complejos, multiplica el numerador y el denominador por el conjugado del denominador." },
+            { topic: "Números Complejos", question: "Si \\(z=a+bi\\), ¿cuál es el resultado de \\(z+\\bar{z}\\)?", options: ["2a", "2bi", "0", "\\(a^2+b^2\\)", "2a+2bi"], answer: 0, explanation: "<div>Si \\(z = a+bi\\), su conjugado es \\(\\bar{z} = a-bi\\).</div><div>Sumándolos: \\((a+bi) + (a-bi) = a+a+bi-bi = 2a\\).</div>", hint: "Escribe la expresión y suma las partes reales y las imaginarias por separado." },
+            { topic: "Números Complejos", question: "La parte imaginaria del número complejo \\(z=(1+i)^2\\) es:", options: ["0", "1", "2", "-1", "-2"], answer: 2, explanation: "<div>Desarrollamos el cuadrado del binomio:</div><div>\\((1+i)^2 = 1^2 + 2(1)(i) + i^2 = 1 + 2i - 1 = 2i\\).</div><div>El número complejo es \\(0+2i\\). La parte imaginaria es el coeficiente de 'i', que es 2.</div>", hint: "Usa la fórmula del cuadrado de un binomio: \\((a+b)^2 = a^2+2ab+b^2\\)." },
+            
+            // Medidas de Dispersión
+            { topic: "Medidas de Dispersión", question: "Dada la muestra de datos: 5, 8, 3, 5, 9. El rango es:", options: ["3", "4", "5", "6", "9"], answer: 3, explanation: "<div>El rango es la diferencia entre el valor máximo y el valor mínimo de la muestra.</div><div>Valor máximo = 9.</div><div>Valor mínimo = 3.</div><div>Rango = 9 - 3 = 6.</div>", hint: "Rango = Dato Mayor - Dato Menor." },
+            { topic: "Medidas de Dispersión", question: "Para la muestra de datos: 2, 4, 6, 8. La media aritmética (\\(\\bar{x}\\)) es:", options: ["4", "5", "6", "10", "20"], answer: 1, explanation: "<div>La media aritmética o promedio se calcula sumando todos los datos y dividiendo por la cantidad de datos.</div><div>Suma = 2 + 4 + 6 + 8 = 20.</div><div>Cantidad de datos = 4.</div><div>Media = \\(\\frac{20}{4} = 5\\).</div>", hint: "Suma todos los valores y divide por el número de valores." },
+            { topic: "Medidas de Dispersión", question: "Considere la muestra: 10, 12, 10, 14, 14. La desviación de cada dato respecto a la media (\\(\\bar{x}=12\\)) es:", options: ["-2, 0, -2, 2, 2", "2, 0, 2, -2, -2", "10, 12, 10, 14, 14", "0, 0, 0, 0, 0", "-12,-12,-12,-12,-12"], answer: 0, explanation: "<div>La desviación de un dato es la diferencia entre el dato y la media (\\(x_i - \\bar{x}\\)).</div><div>10 - 12 = -2</div><div>12 - 12 = 0</div><div>10 - 12 = -2</div><div>14 - 12 = 2</div><div>14 - 12 = 2</div><div>La secuencia es -2, 0, -2, 2, 2.</div>", hint: "Para cada dato, réstale el valor de la media (12)." },
+            { topic: "Medidas de Dispersión", question: "Para la muestra de datos: 3, 5, 7. La varianza muestral (\\(s^2\\)) es: (Considera \\(\\bar{x}=5\\))", options: ["0", "2", "\\(\\frac{8}{3}\\)", "4", "8"], answer: 3, explanation: "<div>1. Desviaciones (\\(x_i - \\bar{x}\\)): (3-5)=-2, (5-5)=0, (7-5)=2.</div><div>2. Desviaciones al cuadrado: \\((-2)^2=4, 0^2=0, 2^2=4\\).</div><div>3. Suma de cuadrados: 4 + 0 + 4 = 8.</div><div>4. Varianza muestral (se divide por n-1): \\(s^2 = \\frac{8}{3-1} = \\frac{8}{2} = 4\\).</div>", hint: "Calcula las desviaciones respecto a la media, elévalas al cuadrado, súmalas y divide por (n-1)." },
+            { topic: "Medidas de Dispersión", question: "Si la varianza de una muestra es 9, ¿cuál es la desviación estándar muestral (s)?", options: ["3", "81", "4.5", "\\(\\sqrt{3}\\)", "18"], answer: 0, explanation: "<div>La desviación estándar (s) es la raíz cuadrada de la varianza (\\(s^2\\)).</div><div>Si \\(s^2 = 9\\), entonces \\(s = \\sqrt{9} = 3\\).</div>", hint: "La desviación estándar es simplemente la raíz cuadrada positiva de la varianza." },
+            { topic: "Medidas de Dispersión", question: "Dada la muestra: 1, 1, 1, 7, 7, 7. ¿Cuál de las siguientes afirmaciones es VERDADERA?", options: ["El rango es 7.", "La desviación estándar es 0.", "La varianza es negativa.", "Todos los datos son iguales a la media.", "El rango es 6."], answer: 4, explanation: "<div>Analicemos las opciones:</div><div><b>A)</b> Rango = 7 - 1 = 6. (Falsa)</div><div><b>B)</b> La desviación estándar solo es 0 si todos los datos son iguales. (Falsa)</div><div><b>C)</b> La varianza nunca es negativa. (Falsa)</div><div><b>D)</b> La media es (1+1+1+7+7+7)/6 = 24/6 = 4. Los datos no son iguales a la media. (Falsa)</div><div><b>E)</b> Rango = 7 - 1 = 6. (Verdadera)</div>", hint: "Calcula el rango (máximo - mínimo) y la media para verificar las afirmaciones." },
+            { topic: "Medidas de Dispersión", question: "Se tienen dos cursos, A y B. Las notas en el curso A tienen una desviación estándar de 1.5 y en el curso B de 2.0. ¿Qué se puede concluir?", options: ["Las notas del curso B son más altas.", "Las notas del curso A son más homogéneas.", "El promedio es mayor en el curso B.", "El rango de notas es mayor en el curso A.", "Las notas del curso A son más dispersas."], answer: 1, explanation: "<div>Una menor desviación estándar indica que los datos están más agrupados alrededor de la media, es decir, son más homogéneos (menos dispersos).</div><div>Como la desviación estándar del curso A (1.5) es menor que la del curso B (2.0), las notas del curso A son más homogéneas.</div>", hint: "Menor desviación estándar significa menor dispersión de los datos." },
+            { topic: "Medidas de Dispersión", question: "Para los datos 4, 6, 8, 10, la suma de los cuadrados de las desviaciones es 20. Si la muestra tiene 4 datos, la varianza muestral (s²) es:", options: ["5", "4", "20/3", "20", "10"], answer: 2, explanation: "<div>La varianza muestral \\(s^2\\) se calcula como la suma de los cuadrados de las desviaciones dividida por \\(n-1\\).</div><div>Suma de cuadrados = 20.</div><div>n = 4, entonces n-1 = 3.</div><div>\\(s^2 = \\frac{20}{3}\\).</div>", hint: "La fórmula de la varianza MUESTRAL divide la suma de cuadrados por (n-1), no por n." },
+            { topic: "Medidas de Dispersión", question: "¿Cuál de las siguientes medidas de dispersión se mide en las mismas unidades que los datos originales?", options: ["Varianza", "Coeficiente de variación", "Rango intercuartílico", "Desviación estándar", "D es correcta"], answer: 3, explanation: "<div>La Varianza está en unidades al cuadrado. El Coeficiente de Variación no tiene unidades. El Rango y la Desviación Estándar sí están en las mismas unidades que los datos. Como la Desviación Estándar está como opción única, es la más adecuada.</div>", hint: "Piensa en cómo se calcula cada medida. Si se elevan los datos al cuadrado, las unidades también lo harán." }
+        ];
+
+        let currentQuestionIndex = 0;
+        let userAnswers = new Array(questions.length).fill(null);
+        let questionAnsweredCorrectly = new Array(questions.length).fill(false);
+        let resultsChart = null;
+
+        const startScreen = document.getElementById('start-screen');
+        const quizScreen = document.getElementById('quiz-screen');
+        const resultsScreen = document.getElementById('results-screen');
+        
+        const startBtn = document.getElementById('start-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const finishBtn = document.getElementById('finish-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        const topicTitle = document.getElementById('topic-title');
+        const questionCounter = document.getElementById('question-counter');
+        const questionText = document.getElementById('question-text');
+        const optionsContainer = document.getElementById('options-container');
+        const progressBar = document.getElementById('progress-bar');
+        const totalScoreEl = document.getElementById('total-score');
+        
+        const feedbackModal = document.getElementById('feedback-modal');
+        const feedbackTitle = document.getElementById('feedback-title');
+        const feedbackContent = document.getElementById('feedback-content');
+        const feedbackBtn = document.getElementById('feedback-btn');
+
+        function renderMath() {
+            if (window.MathJax && window.MathJax.typeset) {
+                window.MathJax.typeset();
+            }
+        }
+
+        function buildProgressBar() {
+            progressBar.innerHTML = '';
+            questions.forEach((_, index) => {
+                const dot = document.createElement('button');
+                dot.classList.add('w-3', 'h-3', 'rounded-full', 'transition', 'duration-300', 'md:w-4', 'md:h-2');
+                if (questionAnsweredCorrectly[index]) {
+                    dot.classList.add('bg-emerald-500');
+                } else if(userAnswers[index] !== null) {
+                    dot.classList.add('bg-red-400');
+                } else {
+                    dot.classList.add('bg-gray-300');
+                }
+                
+                if (index === currentQuestionIndex) {
+                    dot.classList.add('ring-2', 'ring-offset-2', 'ring-indigo-500');
+                }
+                dot.addEventListener('click', () => {
+                    currentQuestionIndex = index;
+                    showQuestion();
+                });
+                progressBar.appendChild(dot);
+            });
+        }
+        
+        function showQuestion() {
+            const question = questions[currentQuestionIndex];
+            topicTitle.textContent = question.topic;
+            questionCounter.textContent = `Pregunta ${currentQuestionIndex + 1} de ${questions.length}`;
+            questionText.innerHTML = question.question;
+            
+            optionsContainer.innerHTML = '';
+            question.options.forEach((option, index) => {
+                const button = document.createElement('button');
+                button.innerHTML = `<span class="font-bold mr-2">${String.fromCharCode(65 + index)}.</span> ${option}`;
+                button.classList.add('quiz-option', 'w-full', 'p-4', 'border-2', 'rounded-lg', 'text-left', 'bg-white', 'hover:bg-indigo-50', 'hover:border-indigo-400');
+                button.addEventListener('click', () => selectAnswer(index));
+                optionsContainer.appendChild(button);
+            });
+            
+            userAnswers[currentQuestionIndex] = null;
+            updateNavigation();
+            buildProgressBar();
+            renderMath();
+        }
+
+        function selectAnswer(selectedIndex) {
+            const question = questions[currentQuestionIndex];
+            const isCorrect = selectedIndex === question.answer;
+
+            userAnswers[currentQuestionIndex] = selectedIndex;
+            const optionButton = optionsContainer.children[selectedIndex];
+
+            if (isCorrect) {
+                questionAnsweredCorrectly[currentQuestionIndex] = true;
+                optionButton.classList.add('correct-answer');
+                disableAllOptions();
+                showFeedbackModal(true, question.explanation);
+                nextBtn.disabled = false;
+            } else {
+                optionButton.classList.add('incorrect-answer');
+                optionButton.disabled = true;
+                showFeedbackModal(false, question.hint);
+            }
+            buildProgressBar();
+        }
+
+        function disableAllOptions() {
+            const options = optionsContainer.children;
+            for (let i = 0; i < options.length; i++) {
+                options[i].disabled = true;
+            }
+        }
+
+        function showFeedbackModal(isCorrect, content) {
+            feedbackTitle.textContent = isCorrect ? "¡Correcto!" : "Respuesta Incorrecta";
+            feedbackTitle.className = `text-2xl font-bold mb-4 ${isCorrect ? 'text-emerald-600' : 'text-red-600'}`;
+            feedbackContent.innerHTML = content;
+            
+            feedbackBtn.textContent = isCorrect ? "Continuar" : "Intentar de Nuevo";
+            feedbackBtn.className = `text-white font-bold py-2 px-6 rounded-lg ${isCorrect ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`;
+            
+            feedbackBtn.onclick = () => hideFeedbackModal();
+            
+            feedbackModal.classList.remove('hidden');
+            renderMath();
+        }
+
+        function hideFeedbackModal() {
+            feedbackModal.classList.add('hidden');
+        }
+
+        function updateNavigation() {
+            nextBtn.disabled = !questionAnsweredCorrectly[currentQuestionIndex];
+            nextBtn.classList.toggle('opacity-50', !questionAnsweredCorrectly[currentQuestionIndex]);
+            nextBtn.classList.toggle('cursor-not-allowed', !questionAnsweredCorrectly[currentQuestionIndex]);
+            
+            if (currentQuestionIndex === questions.length - 1) {
+                nextBtn.classList.add('hidden');
+                finishBtn.classList.remove('hidden');
+                 finishBtn.disabled = !questionAnsweredCorrectly[currentQuestionIndex];
+                 finishBtn.classList.toggle('opacity-50', !questionAnsweredCorrectly[currentQuestionIndex]);
+            } else {
+                nextBtn.classList.remove('hidden');
+                finishBtn.classList.add('hidden');
+            }
+        }
+        
+        function showResults() {
+            quizScreen.classList.add('hidden');
+            resultsScreen.classList.remove('hidden');
+
+            let score = questionAnsweredCorrectly.filter(Boolean).length;
+            const topicResults = {};
+            const topics = [...new Set(questions.map(q => q.topic))];
+            
+            topics.forEach(topic => {
+                topicResults[topic] = { correct: 0, total: 0 };
+            });
+
+            questions.forEach((question, index) => {
+                topicResults[question.topic].total++;
+                if (questionAnsweredCorrectly[index]) {
+                    topicResults[question.topic].correct++;
+                }
+            });
+
+            totalScoreEl.textContent = `${score} / ${questions.length}`;
+            
+            const ctx = document.getElementById('results-chart').getContext('2d');
+            const data = {
+                labels: topics,
+                datasets: [{
+                    label: '% Correctas',
+                    data: topics.map(topic => {
+                        const total = topicResults[topic].total;
+                        return total > 0 ? (topicResults[topic].correct / total) * 100 : 0;
+                    }),
+                    backgroundColor: [
+                        'rgba(165, 180, 252, 0.7)',
+                        'rgba(129, 140, 248, 0.7)',
+                        'rgba(99, 102, 241, 0.7)'
+                    ],
+                    borderColor: [
+                        'rgba(165, 180, 252, 1)',
+                        'rgba(129, 140, 248, 1)',
+                        'rgba(99, 102, 241, 1)'
+                    ],
+                    borderWidth: 2
+                }]
+            };
+
+            if (resultsChart) {
+                resultsChart.destroy();
+            }
+
+            resultsChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top', labels: { font: { size: 14, family: 'Inter' } } },
+                        tooltip: { callbacks: { label: function(context) { let label = context.dataset.label || ''; if (label) { label += ': '; } if (context.parsed !== null) { label += context.parsed.toFixed(0) + '%'; } return label; } } }
+                    }
+                }
+            });
+        }
+        
+        startBtn.addEventListener('click', () => {
+            startScreen.classList.add('hidden');
+            quizScreen.classList.remove('hidden');
+            showQuestion();
+        });
+
+        nextBtn.addEventListener('click', () => {
+            if (currentQuestionIndex < questions.length - 1) {
+                currentQuestionIndex++;
+                showQuestion();
+            }
+        });
+        
+        finishBtn.addEventListener('click', showResults);
+        
+        restartBtn.addEventListener('click', () => {
+            currentQuestionIndex = 0;
+            userAnswers.fill(null);
+            questionAnsweredCorrectly.fill(false);
+            resultsScreen.classList.add('hidden');
+            startScreen.classList.remove('hidden');
+        });
+
+    </script>
+</body>
+</html>
